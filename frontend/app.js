@@ -1,7 +1,10 @@
 const API_BASE = '';
 
-// 전역 상태
+// ─── 전역 상태 ────────────────────────────────────────────────────────────
 let tasks = [];
+let currentFilter = 'all';
+let currentSort = 'newest';
+let isFirstLoad = true;
 
 // ─── API ──────────────────────────────────────────────────────────────────
 
@@ -17,8 +20,21 @@ async function apiFetch(path, options = {}) {
 }
 
 async function fetchTasks() {
-  tasks = await apiFetch('/api/tasks');
-  renderTaskList();
+  try {
+    tasks = await apiFetch('/api/tasks');
+    isFirstLoad = false;
+    renderTaskList();
+  } catch {
+    if (isFirstLoad) {
+      isFirstLoad = false;
+      document.getElementById('task-list').innerHTML = `
+        <div class="col-span-full flex flex-col items-center py-20
+                    text-red-400 dark:text-red-500 gap-2">
+          <p class="text-sm">태스크를 불러오지 못했습니다.</p>
+        </div>`;
+    }
+    // 폴링 에러는 무시 — 토스트 스팸 방지
+  }
 }
 
 async function fetchTaskById(id) {
@@ -84,20 +100,91 @@ const STATUS_CONFIG = {
   done:        { label: '완료',    cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300' },
 };
 
+const FILTER_OPTIONS = [
+  { value: 'all',         label: '전체' },
+  { value: 'todo',        label: '할 일' },
+  { value: 'in_progress', label: '진행 중' },
+  { value: 'done',        label: '완료' },
+];
+
+// ─── 필터 + 정렬 ──────────────────────────────────────────────────────────
+
+function getDisplayTasks() {
+  let result = currentFilter === 'all'
+    ? [...tasks]
+    : tasks.filter(t => t.status === currentFilter);
+
+  if (currentSort === 'newest') {
+    result.sort((a, b) => b.id - a.id);
+  } else if (currentSort === 'due_asc') {
+    result.sort((a, b) => {
+      if (!a.due_at && !b.due_at) return 0;
+      if (!a.due_at) return 1;   // 마감 없는 항목은 뒤로
+      if (!b.due_at) return -1;
+      return new Date(a.due_at) - new Date(b.due_at);
+    });
+  } else if (currentSort === 'status') {
+    const ORDER = { todo: 0, in_progress: 1, done: 2 };
+    result.sort((a, b) => (ORDER[a.status] ?? 0) - (ORDER[b.status] ?? 0));
+  }
+
+  return result;
+}
+
+function setFilter(value) {
+  currentFilter = value;
+  renderTaskList();
+}
+
+function setSort(value) {
+  currentSort = value;
+  renderTaskList();
+}
+
 // ─── 렌더 ─────────────────────────────────────────────────────────────────
 
+function renderFilterTabs() {
+  const container = document.getElementById('filter-tabs');
+  container.innerHTML = FILTER_OPTIONS.map(({ value, label }) => {
+    const count = value === 'all'
+      ? tasks.length
+      : tasks.filter(t => t.status === value).length;
+    const active = currentFilter === value;
+    const activeCls = active
+      ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200';
+    const countCls = active
+      ? 'text-blue-500 dark:text-blue-400'
+      : 'text-slate-400 dark:text-slate-500';
+    return `
+      <button onclick="setFilter('${value}')"
+              class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeCls}">
+        ${label}<span class="ml-1 text-xs ${countCls}">${count}</span>
+      </button>`;
+  }).join('');
+}
+
 function renderTaskList() {
+  renderFilterTabs();
+
   const container = document.getElementById('task-list');
-  if (!tasks.length) {
+  const displayed = getDisplayTasks();
+
+  if (!displayed.length) {
+    const activeLabel = FILTER_OPTIONS.find(f => f.value === currentFilter)?.label ?? '';
+    const msg = currentFilter === 'all'
+      ? '태스크가 없습니다. 새 태스크를 추가해 보세요.'
+      : `'${activeLabel}' 상태의 태스크가 없습니다.`;
     container.innerHTML = `
       <div class="col-span-full flex flex-col items-center py-20
                   text-slate-400 dark:text-slate-500 gap-2">
         <span class="text-5xl">📋</span>
-        <p class="text-sm">태스크가 없습니다. 새 태스크를 추가해 보세요.</p>
+        <p class="text-sm">${msg}</p>
       </div>`;
     return;
   }
-  container.innerHTML = tasks.map(renderCard).join('');
+
+  container.innerHTML = displayed.map(renderCard).join('');
 }
 
 function renderCard(task) {
@@ -118,7 +205,6 @@ function renderCard(task) {
       <div class="flex items-start justify-between gap-2">
         <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100
                    leading-snug break-words">${escapeHtml(task.title)}</h3>
-        <!-- 삭제 버튼 — 카드 클릭 이벤트 전파 차단 -->
         <button class="flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center
                        -mr-2 -mt-1 text-slate-300 hover:text-red-500
                        dark:hover:text-red-400 transition-colors"
@@ -141,11 +227,51 @@ function renderCard(task) {
     </article>`;
 }
 
+// ─── 토스트 ───────────────────────────────────────────────────────────────
+
+function showToast(message, type = 'success') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  const colorCls = type === 'success'
+    ? 'bg-emerald-500 text-white'
+    : 'bg-red-500 text-white';
+
+  toast.className = [
+    'px-4 py-3 rounded-xl shadow-lg text-sm font-medium pointer-events-auto',
+    'transition-all duration-300 ease-out',
+    colorCls,
+  ].join(' ');
+  toast.style.transform = 'translateX(120%)';
+  toast.style.opacity = '0';
+  toast.textContent = message;
+
+  container.appendChild(toast);
+
+  // 다음 프레임에서 슬라이드 인
+  requestAnimationFrame(() => {
+    toast.style.transform = 'translateX(0)';
+    toast.style.opacity = '1';
+  });
+
+  setTimeout(() => {
+    toast.style.transform = 'translateX(120%)';
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+// ─── 버튼 로딩 상태 ───────────────────────────────────────────────────────
+
+function setSubmitting(btn, isSubmitting) {
+  btn.disabled = isSubmitting;
+}
+
 // ─── 추가 폼 ──────────────────────────────────────────────────────────────
 
 async function handleAddSubmit(e) {
   e.preventDefault();
   const errEl = document.getElementById('add-error');
+  const btn = document.getElementById('add-btn');
   const title = document.getElementById('add-title').value.trim();
   const status = document.getElementById('add-status').value;
   const dueAtRaw = document.getElementById('add-due-at').value;
@@ -156,12 +282,15 @@ async function handleAddSubmit(e) {
   }
   hideError(errEl);
 
-  const data = { title, status, due_at: toIsoString(dueAtRaw) };
+  setSubmitting(btn, true);
   try {
-    await createTask(data);
+    await createTask({ title, status, due_at: toIsoString(dueAtRaw) });
     e.target.reset();
+    showToast('태스크가 추가되었습니다.');
   } catch (err) {
     showError(errEl, '저장 실패: ' + formatApiError(err));
+  } finally {
+    setSubmitting(btn, false);
   }
 }
 
@@ -184,6 +313,7 @@ function closeEditModal() {
 
 async function saveEdit() {
   const errEl = document.getElementById('edit-error');
+  const btn = document.getElementById('edit-save-btn');
   const id = Number(document.getElementById('edit-id').value);
   const title = document.getElementById('edit-title').value.trim();
   const description = document.getElementById('edit-description').value.trim() || null;
@@ -195,12 +325,15 @@ async function saveEdit() {
     return;
   }
 
-  const data = { title, description, status, due_at: toIsoString(dueAtRaw) };
+  setSubmitting(btn, true);
   try {
-    await updateTask(id, data);
+    await updateTask(id, { title, description, status, due_at: toIsoString(dueAtRaw) });
     closeEditModal();
+    showToast('태스크가 수정되었습니다.');
   } catch (err) {
     showError(errEl, '저장 실패: ' + formatApiError(err));
+  } finally {
+    setSubmitting(btn, false);
   }
 }
 
@@ -208,7 +341,12 @@ async function saveEdit() {
 
 async function confirmDelete(id) {
   if (!confirm('이 태스크를 삭제할까요?')) return;
-  await deleteTask(id);
+  try {
+    await deleteTask(id);
+    showToast('태스크가 삭제되었습니다.');
+  } catch {
+    showToast('삭제에 실패했습니다.', 'error');
+  }
 }
 
 // ─── 테마 ─────────────────────────────────────────────────────────────────
@@ -245,17 +383,14 @@ function formatApiError(err) {
 // ─── 폴링 ─────────────────────────────────────────────────────────────────
 
 function startPolling() {
-  fetchTasks();                       // 즉시 1회 조회
-  setInterval(fetchTasks, 3_000);     // 이후 3초마다 갱신
+  fetchTasks();
+  setInterval(fetchTasks, 3_000);
 }
 
 // ─── 초기화 ───────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('add-form').addEventListener('submit', handleAddSubmit);
-
-  // 현재 테마에 맞게 아이콘 동기화
   syncThemeIcons(document.documentElement.classList.contains('dark'));
-
   startPolling();
 });
