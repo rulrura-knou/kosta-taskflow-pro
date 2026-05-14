@@ -1,1 +1,6 @@
 .claude/
+backend/venv/
+backend/taskflow.db
+__pycache__/
+*.pyc
+.env
