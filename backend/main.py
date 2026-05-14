@@ -1,7 +1,9 @@
+import os
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from database import engine, Base
 from routers import tasks
 
@@ -29,3 +31,9 @@ app.include_router(tasks.router)
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+# 프론트엔드 정적 파일 서빙 — /api 라우터 등록 후 마지막에 마운트
+frontend_dir = os.path.join(os.path.dirname(__file__), '..', 'frontend')
+if os.path.isdir(frontend_dir):
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
