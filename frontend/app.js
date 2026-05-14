@@ -95,14 +95,14 @@ function toDatetimeLocal(isoStr) {
 }
 
 const STATUS_CONFIG = {
-  todo:        { label: '할 일',   cls: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' },
+  todo:        { label: '할 일1',   cls: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' },
   in_progress: { label: '진행 중', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300' },
   done:        { label: '완료',    cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300' },
 };
 
 const FILTER_OPTIONS = [
   { value: 'all',         label: '전체' },
-  { value: 'todo',        label: '할 일' },
+  { value: 'todo',        label: '할 일1' },
   { value: 'in_progress', label: '진행 중' },
   { value: 'done',        label: '완료' },
 ];
