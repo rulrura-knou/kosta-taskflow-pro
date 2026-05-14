@@ -2,6 +2,7 @@ import os
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from database import engine, Base
@@ -22,7 +23,7 @@ app.add_middleware(
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     # 명세 준수: Pydantic 검증 오류를 422 대신 400으로 반환
-    return JSONResponse(status_code=400, content={"detail": exc.errors()})
+    return JSONResponse(status_code=400, content={"detail": jsonable_encoder(exc.errors())})
 
 
 app.include_router(tasks.router)
